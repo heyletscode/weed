@@ -58,9 +58,9 @@ void loop() {
     handleCommand(cmd);
   }
 
-  // 2. Run Square Logic if active
+  // 2. Run Spiral Logic if active
   if (isRunning) {
-    performSquareRoutine();
+    performSpiralRoutine();
   }
 }
 
@@ -232,40 +232,83 @@ void turnLeft() { digitalWrite(RIGHT_REV, HIGH); }  // Only right wheel forward 
 void Stop() { digitalWrite(LEFT_FWD, 0); digitalWrite(RIGHT_FWD, 0); digitalWrite(RIGHT_REV, 0); digitalWrite(LEFT_REV, 0); digitalWrite(PUMP_PIN, 0); }
 void spray() { digitalWrite(PUMP_PIN, HIGH); delay(SPRAY_TIME); digitalWrite(PUMP_PIN, LOW); }
 
-void performSquareRoutine() {
-  // Continuous zigzag pattern: straight → right turn → straight → left turn → repeat
-  // Runs until STOP button is pressed
-  // Queries server at halfway through each forward movement to decide if spraying is needed
+// ========= RANDOM SPRAY CHECK MOVEMENT =========
+// Moves forward for 'ms' milliseconds
+// Randomly queries server for spray between ms/3 and ms/2
+bool moveForwardWithRandomCheck(int ms) {
+  long randomInterval = random(ms / 3, ms / 2);
+  unsigned long start = millis();
+  bool checked = false;
   
-  while (isRunning) {
-    // Move forward (with spray query at halfway point)
-    moveForward();
-    if (!smartDelayWithSpray(FORWARD_TIME)) return;
-    Stop();
-    if (!smartDelay(500)) return;  // Brief pause
-    
+  moveForward();
+  
+  while (millis() - start < ms) {
+    // Check if we reached the random trigger point
+    if (!checked && (millis() - start > randomInterval)) {
+      Stop();
+      Serial.println("Random check point reached...");
+      
+      if (queryShouldSpray()) {
+        Serial.println("Spraying!");
+        spray();
+        Serial.println("Spray complete, continuing...");
+      } else {
+        Serial.println("No spray needed.");
+      }
+      
+      checked = true;
+      moveForward(); // Resume
+    }
+
+    // Check for STOP command from server
+    if (client.available()) {
+      char c = client.peek(); // Peek first to see if it's a command
+      if (c == 'X') {
+        client.read(); // Consume
+        isRunning = false;
+        Stop();
+        return false;
+      }
+      // If it's not X, we might need to handle it or ignore it until next loop
+      // For now, let's just check for X for safety
+    }
+  }
+  return true;
+}
+
+void performSpiralRoutine() {
+  // Spiral Pattern: 3 full squares = 12 sides
+  // Decaying length: length reduces by 10% after each side
+  
+  int currentForwardTime = FORWARD_TIME;
+  Serial.println("Starting Spiral Routine...");
+
+  for (int i = 0; i < 12; i++) {
     if (!isRunning) return;
     
-    // Turn right
+    Serial.print("Spiral Side: "); Serial.print(i+1);
+    Serial.print(" | Duration: "); Serial.println(currentForwardTime);
+    
+    // 1. Move Forward with Random Check
+    if (!moveForwardWithRandomCheck(currentForwardTime)) return;
+    
+    Stop();
+    if (!smartDelay(500)) return; // Brief pause before turn
+    
+    // 2. Turn Right
     turnRight();
     if (!smartDelay(TURN_TIME)) return;
+    
     Stop();
-    if (!smartDelay(500)) return;  // Brief pause
+    if (!smartDelay(500)) return; // Brief pause after turn
     
-    if (!isRunning) return;
-    
-    // Move forward again (with spray query at halfway point)
-    moveForward();
-    if (!smartDelayWithSpray(FORWARD_TIME)) return;
-    Stop();
-    if (!smartDelay(500)) return;  // Brief pause
-    
-    if (!isRunning) return;
-    
-    // Turn left
-    turnLeft();
-    if (!smartDelay(TURN_TIME)) return;
-    Stop();
-    if (!smartDelay(500)) return;  // Brief pause
+    // 3. Decay the forward time for next side
+    // Reduce by ~8% to spiral inwards appropriately over 12 steps
+    currentForwardTime = (int)(currentForwardTime * 0.92); 
+    if (currentForwardTime < 500) currentForwardTime = 500; // Minimum limit
   }
+  
+  Serial.println("Spiral Routine Complete!");
+  isRunning = false; // Stop after completing the full spiral
+  Stop();
 }
