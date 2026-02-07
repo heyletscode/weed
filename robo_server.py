@@ -179,8 +179,12 @@ class RobotControlGUI:
     
     def run_vision_pipeline(self):
         """Executes the simulated vision pipeline: Fetch -> Process -> Respond"""
-        # Step 1: Fetch Image
-        self.update_vision_status("Fetching Image from Camera...", "#e67e22") # Orange
+        # Step 1: Countdown and Fetch Image
+        for i in range(4, 0, -1):
+            self.update_vision_status(f"Capturing in {i}...", "#e67e22") # Orange
+            time.sleep(1)
+            
+        self.update_vision_status("Capturing Image...", "#e67e22") # Orange
         
         # Use camera module to fetch image
         image_path = self.camera.fetch_image()

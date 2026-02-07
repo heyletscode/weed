@@ -1,9 +1,9 @@
 #include <WiFi.h>
 
 // ========= WIFI & SERVER SETTINGS =========
-const char* ssid     = "Airtel_mihi_1556_EXT";
-const char* password = "air67760";
-const char* server_ip = "192.168.1.102"; // <-- Put the IP from Python here!
+const char* ssid     = "admin";
+const char* password = "1234567890";
+const char* server_ip = "10.16.152.30"; // <-- Put the IP from Python here!
 const uint16_t port  = 5000;
 
 WiFiClient client;

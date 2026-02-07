@@ -37,8 +37,8 @@ class CameraSystem:
 
     def fetch_image(self):
         """Simulate fetching image from camera module"""
-        print("[VISION] Fetching image (Simulated 4s delay)...")
-        time.sleep(4)
+        print("[VISION] Fetching image...")
+        # Delay removed here, now handled by GUI countdown
         
         # Get directory of current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -120,9 +120,6 @@ class CameraSystem:
         1. Predict objects in the image
         2. Decide spray logic based on prediction
         """
-        print("[VISION] Processing image (Simulated 5s delay)...")
-        time.sleep(5)
-        
         # Get predictions
         detections = self.predict_objects(image_path)
         
