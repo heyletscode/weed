@@ -1,10 +1,39 @@
 import time
 import os
 import random
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
+from csv_logger import CsvLogger
+
+PROJECT_ID = "gen-lang-client-0410905787" 
+LOCATION = "us-central1"
 
 class CameraSystem:
     def __init__(self):
-        pass
+        self.classes = ["weed", "healthy_tomato", "diseased_tomato"]
+        self.logger = CsvLogger()
+        
+        # Initialize Vertex AI
+        try:
+            # Set credentials explicitly
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            credentials_path = os.path.join(current_dir, "credentials.json")
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
+            
+            vertexai.init(project=PROJECT_ID, location=LOCATION)
+            self.model = GenerativeModel("gemini-2.0-flash-exp")
+            self.use_vertex = True
+            print(f"[VISION] Vertex AI initialized with project {PROJECT_ID}")
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize Vertex AI: {e}")
+            print("[VISION] Falling back to simulation mode")
+            self.use_vertex = False
+
+    def convert_to_linux_path(self, path):
+        """Convert Windows path to Linux-style path (forward slashes)"""
+        if path:
+            return path.replace('\\', '/')
+        return path
 
     def fetch_image(self):
         """Simulate fetching image from camera module"""
@@ -27,8 +56,83 @@ class CameraSystem:
             print("[ERROR] No images found in data directory")
             return None
 
-    def process_image(self):
-        """Simulate processing image"""
+    def predict_objects(self, image_path):
+        """
+        Analyze image using Vertex AI (Gemini) or fallback to simulation.
+        """
+        if not image_path:
+            return []
+
+        if self.use_vertex:
+            try:
+                print(f"[VISION] Analyzing {os.path.basename(image_path)} with Gemini...")
+                
+                # Load image data
+                with open(image_path, "rb") as f:
+                    image_data = f.read()
+                
+                image_part = Part.from_data(data=image_data, mime_type="image/jpeg")
+                
+                # Prompt optimized for strict classification
+                prompt = """
+                Analyze this image. Identify if any of the following are present:
+                1. "weed"
+                2. "healthy_tomato"
+                3. "diseased_tomato"
+                
+                STEPS:
+                1. Count the number of distinct plants in the image.
+                2. IF there are multiple distinct plants, return a list of all their types: e.g. ['weed', 'healthy_tomato']
+                3. IF there is only one plant, return ONLY the single most confident classification: e.g. ['weed']
+                
+                Return ONLY a python list of strings containing exactly the detected classes.
+                If nothing is detected, return [].
+                Do not include markdown formatting or explanations.
+                """
+                
+                response = self.model.generate_content([image_part, prompt])
+                response_text = response.text.strip()
+                
+                # Clean up response to get a list
+                # This is a basic parser, assuming the model obeys instructions well
+                detected_objects = []
+                for cls in self.classes:
+                    if cls in response_text:
+                        detected_objects.append(cls)
+                
+                print(f"[VERTEX] Raw response: {response_text}")
+                print(f"[VERTEX] parsed: {detected_objects}")
+                return detected_objects
+
+            except Exception as e:
+                print(f"[ERROR] Vertex AI prediction failed: {e}")
+                print("[VISION] Falling back to simulation for this request")
+        
+        # Fallback Simulation
+        num_objects = random.randint(1, 3) 
+        detected_objects = random.sample(self.classes, num_objects)
+        print(f"[VISION] (Simulated) Predictor output: {detected_objects}")
+        return detected_objects
+
+    def process_image(self, image_path):
+        """
+        Simulate processing image pipeline.
+        1. Predict objects in the image
+        2. Decide spray logic based on prediction
+        """
         print("[VISION] Processing image (Simulated 5s delay)...")
         time.sleep(5)
-        return random.choice(['0', '1'])
+        
+        # Get predictions
+        detections = self.predict_objects(image_path)
+        
+        # Log to CSV
+        self.logger.log(detections)
+        
+        # Spray Logic: Spray if "weed" is detected
+        if "weed" in detections:
+            print("[LOGIC] Weed detected -> SPRAY")
+            return '1', detections
+        else:
+            print("[LOGIC] No weed detected -> NO SPRAY")
+            return '0', detections

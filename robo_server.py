@@ -192,8 +192,8 @@ class RobotControlGUI:
         # Step 2: Process Image
         self.update_vision_status("Processing Image...", "#3498db") # Blue
         
-        # Use camera module to process image
-        decision = self.camera.process_image()
+        # Use camera module to process image (pass the fetched image path)
+        decision, detections = self.camera.process_image(image_path)
         
         # Step 3: Send Response
         if self.client_conn:
@@ -201,12 +201,17 @@ class RobotControlGUI:
             print(f"[decision] Sent to robot: {decision}")
         
         # Update Status with Result
-        result_text = "Result: SPRAY (WEED DETECTED)" if decision == '1' else "Result: NO SPRAY (CLEAR)"
+        result_text = "Result: SPRAY (WEED)" if decision == '1' else "Result: NO SPRAY"
         result_color = "#c0392b" if decision == '1' else "#27ae60" # Red for spray, Green for clear
-        self.update_vision_status(result_text, result_color)
+        
+        # Show detections in status
+        det_str = ", ".join(detections) if detections else "None"
+        full_status = f"{result_text}\nDetected: {det_str}"
+        
+        self.update_vision_status(full_status, result_color)
         
         # Reset status after a delay
-        self.root.after(3000, lambda: self.update_vision_status("Status: Idle", "#7f8c8d"))
+        self.root.after(5000, lambda: self.update_vision_status("Status: Idle", "#7f8c8d"))
 
     def update_vision_status(self, text, color):
         """Update the vision status label safely from background thread"""
