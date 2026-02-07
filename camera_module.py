@@ -35,10 +35,18 @@ class CameraSystem:
             return path.replace('\\', '/')
         return path
 
-    def fetch_image(self):
-        """Simulate fetching image from camera module"""
-        print("[VISION] Fetching image...")
+    def fetch_image(self, source="dataset"):
+        """
+        Fetch image based on source.
+        source: "dataset" or "camera"
+        """
+        print(f"[VISION] Fetching image from {source}...")
         # Delay removed here, now handled by GUI countdown
+        
+        if source == "camera":
+            print("[VISION] (Placeholder) Capturing from Real Camera... (Using random dataset image for now)")
+            # TODO: Implement real camera capture here
+            # For now, fall through to dataset logic
         
         # Get directory of current file
         current_dir = os.path.dirname(os.path.abspath(__file__))

@@ -49,6 +49,16 @@ class RobotControlGUI:
                                    font=("Arial", 12, "bold"), padx=15, pady=10)
         vision_frame.pack(fill=tk.X, padx=20, pady=10)
         
+        # Camera Source Selection
+        src_frame = tk.Frame(vision_frame)
+        src_frame.pack(side=tk.LEFT, padx=10)
+        
+        tk.Label(src_frame, text="Source:", font=("Arial", 10, "bold")).pack(anchor=tk.W)
+        self.source_combo = ttk.Combobox(src_frame, values=["Dataset (Random)", "Camera"], 
+                                         state="readonly", width=15)
+        self.source_combo.current(0) # Default to Dataset
+        self.source_combo.pack()
+        
         # Image Display Area
         self.image_label = tk.Label(vision_frame, text="No Image", bg="#bdc3c7", width=40, height=10)
         self.image_label.pack(side=tk.LEFT, padx=10, pady=10)
@@ -186,8 +196,12 @@ class RobotControlGUI:
             
         self.update_vision_status("Capturing Image...", "#e67e22") # Orange
         
+        # Get selected source
+        source_map = {"Dataset (Random)": "dataset", "Camera": "camera"}
+        selected_source = source_map.get(self.source_combo.get(), "dataset")
+        
         # Use camera module to fetch image
-        image_path = self.camera.fetch_image()
+        image_path = self.camera.fetch_image(source=selected_source)
         
         # Update GUI with fetched image
         if image_path:

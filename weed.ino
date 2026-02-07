@@ -304,7 +304,7 @@ void performSpiralRoutine() {
     
     // 3. Decay the forward time for next side
     // Reduce by ~8% to spiral inwards appropriately over 12 steps
-    currentForwardTime = (int)(currentForwardTime * 0.92); 
+    currentForwardTime = (int)(currentForwardTime * 0.84); 
     if (currentForwardTime < 500) currentForwardTime = 500; // Minimum limit
   }
   
