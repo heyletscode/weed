@@ -2,10 +2,9 @@ import socket
 import threading
 import tkinter as tk
 from tkinter import ttk
-import random
 import time
-import os
 from PIL import Image, ImageTk
+from camera_module import CameraSystem
 
 # --- SETTINGS ---
 PORT = 5000
@@ -29,6 +28,9 @@ class RobotControlGUI:
         self.forward_time = DEFAULT_FORWARD_TIME
         self.turn_time = DEFAULT_TURN_TIME
         self.spray_time = DEFAULT_SPRAY_TIME
+        
+        # Initialize Camera System
+        self.camera = CameraSystem()
         
         self.setup_gui()
         
@@ -179,7 +181,9 @@ class RobotControlGUI:
         """Executes the simulated vision pipeline: Fetch -> Process -> Respond"""
         # Step 1: Fetch Image
         self.update_vision_status("Fetching Image from Camera...", "#e67e22") # Orange
-        image_path = self.fetch_camera_image()
+        
+        # Use camera module to fetch image
+        image_path = self.camera.fetch_image()
         
         # Update GUI with fetched image
         if image_path:
@@ -187,7 +191,9 @@ class RobotControlGUI:
         
         # Step 2: Process Image
         self.update_vision_status("Processing Image...", "#3498db") # Blue
-        decision = self.process_image()
+        
+        # Use camera module to process image
+        decision = self.camera.process_image()
         
         # Step 3: Send Response
         if self.client_conn:
@@ -201,30 +207,6 @@ class RobotControlGUI:
         
         # Reset status after a delay
         self.root.after(3000, lambda: self.update_vision_status("Status: Idle", "#7f8c8d"))
-
-    def fetch_camera_image(self):
-        """Simulate fetching image from camera module"""
-        print("[VISION] Fetching image (Simulated 4s delay)...")
-        time.sleep(4)
-        
-        data_dir = os.path.join(os.path.dirname(__file__), "data")
-        if not os.path.exists(data_dir):
-            print(f"[ERROR] Data directory not found: {data_dir}")
-            return None
-            
-        images = [f for f in os.listdir(data_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        if images:
-            selected_image = random.choice(images)
-            return os.path.join(data_dir, selected_image)
-        else:
-            print("[ERROR] No images found in data directory")
-            return None
-
-    def process_image(self):
-        """Simulate processing image"""
-        print("[VISION] Processing image (Simulated 5s delay)...")
-        time.sleep(5)
-        return random.choice(['1', '1'])
 
     def update_vision_status(self, text, color):
         """Update the vision status label safely from background thread"""
