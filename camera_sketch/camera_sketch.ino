@@ -56,8 +56,8 @@ void startCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_RGB565;
   
-  // Frame parameters - Reduced resolution for RGB565
-  config.frame_size = FRAMESIZE_QVGA; // 320x240 = ~150KB (vs 640x480 = ~600KB)
+  // Frame parameters - VGA resolution for RGB565
+  config.frame_size = FRAMESIZE_VGA; // 640x480 = ~600KB
   config.fb_count = 2; // Double buffering for better reliability
 
   if(psramFound()){

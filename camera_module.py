@@ -125,9 +125,9 @@ class CameraSystem:
                                 
                                 print(f"[VISION] Raw RGB565 data received ({os.path.getsize(raw_path)} bytes)")
                                 
-                                # Convert RGB565 to PNG (QVGA: 320x240)
+                                # Convert RGB565 to PNG (VGA: 640x480)
                                 save_path = os.path.join(current_dir, "data", "capture_latest.png")
-                                if self._convert_rgb565_to_png(raw_path, save_path, 320, 240):
+                                if self._convert_rgb565_to_png(raw_path, save_path, 640, 480):
                                     print(f"[VISION] Image converted and saved to {save_path}")
                                     return save_path
                                 else:
@@ -198,10 +198,9 @@ class CameraSystem:
                 1. Count the number of distinct plants in the image.
                 2. IF there are multiple distinct plants, return a list of all their types: e.g. ['weed', 'healthy_tomato']
                 3. IF there is only one plant, return ONLY the single most confident classification: e.g. ['weed']
-                4. IF NO plant is clearly visible in the image, or you are unsure, return []. Do not guess.
                 
                 Return ONLY a python list of strings containing exactly the detected classes.
-                If nothing is detected, return [].
+                If no plants are detected, return [].
                 Do not include markdown formatting or explanations.
                 """
                 
