@@ -58,20 +58,21 @@ class CameraSystem:
             i = 0
             for y in range(height):
                 for x in range(width):
-                    # Read 2 bytes (16 bits) as little-endian
-                    pixel_val = struct.unpack('<H', data[i:i+2])[0]
+                    # Read 2 bytes - try big-endian for ESP32
+                    pixel_val = struct.unpack('>H', data[i:i+2])[0]
                     
-                    # Extract 5-6-5 bits
-                    r = (pixel_val >> 11) & 0x1F
-                    g = (pixel_val >> 5) & 0x3F
-                    b = pixel_val & 0x1F
+                    # RGB565 format: RRRRRGGGGGGBBBBB
+                    r = (pixel_val >> 11) & 0x1F  # Top 5 bits
+                    g = (pixel_val >> 5) & 0x3F   # Middle 6 bits
+                    b = pixel_val & 0x1F          # Bottom 5 bits
                     
-                    # Scale up to 8-bit (0-255)
-                    pixels[x, y] = (
-                        (r * 255) // 31,
-                        (g * 255) // 63,
-                        (b * 255) // 31
-                    )
+                    # Scale up to 8-bit (0-255) with proper expansion
+                    # Replicate MSBs to fill lower bits for smoother gradients
+                    r8 = (r << 3) | (r >> 2)
+                    g8 = (g << 2) | (g >> 4)
+                    b8 = (b << 3) | (b >> 2)
+                    
+                    pixels[x, y] = (r8, g8, b8)
                     i += 2
             
             # Save as PNG (lossless)
@@ -80,7 +81,7 @@ class CameraSystem:
             print(f"[VISION] Conversion successful: {width}x{height} PNG image")
             return True
         except Exception as e:
-            print(f"[ERROR] RGB888 conversion failed: {e}")
+            print(f"[ERROR] RGB565 conversion failed: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -114,7 +115,7 @@ class CameraSystem:
                             if response.status_code == 200:
                                 # Read in chunks to handle incomplete reads better
                                 current_dir = os.path.dirname(os.path.abspath(__file__))
-                                raw_path = os.path.join(current_dir, "data", "capture_raw.rgb888")
+                                raw_path = os.path.join(current_dir, "data", "capture_raw.rgb565")
                                 
                                 # Stream raw data to file in chunks
                                 with open(raw_path, 'wb') as f:
@@ -122,7 +123,7 @@ class CameraSystem:
                                         if chunk:
                                             f.write(chunk)
                                 
-                                print(f"[VISION] Raw RGB888 data received ({os.path.getsize(raw_path)} bytes)")
+                                print(f"[VISION] Raw RGB565 data received ({os.path.getsize(raw_path)} bytes)")
                                 
                                 # Convert RGB565 to PNG (QVGA: 320x240)
                                 save_path = os.path.join(current_dir, "data", "capture_latest.png")
