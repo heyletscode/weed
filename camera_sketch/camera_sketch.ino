@@ -54,10 +54,10 @@ void startCamera() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_RGB565;
+  config.pixel_format = PIXFORMAT_RGB888;
   
-  // Frame parameters - Reduced resolution for RGB565
-  config.frame_size = FRAMESIZE_QVGA; // 320x240 = ~150KB (vs 640x480 = ~600KB)
+  // Frame parameters - QVGA for RGB888
+  config.frame_size = FRAMESIZE_QVGA; // 320x240 = ~230KB for RGB888
   config.fb_count = 2; // Double buffering for better reliability
 
   if(psramFound()){
@@ -97,7 +97,7 @@ void serveImage(WiFiClient& client) {
 
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: application/octet-stream");
-  client.println("Content-Disposition: inline; filename=capture.rgb565");
+  client.println("Content-Disposition: inline; filename=capture.rgb888");
   client.print("Content-Length: ");
   client.println(fb->len);
   client.println();

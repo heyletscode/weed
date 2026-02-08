@@ -35,44 +35,23 @@ class CameraSystem:
             return path.replace('\\', '/')
         return path
     
-    def _convert_rgb565_to_jpeg(self, rgb565_path, output_path, width, height):
-        """Convert RGB565 raw data to JPEG image using optimal algorithm"""
+    def _convert_rgb888_to_jpeg(self, rgb888_path, output_path, width, height):
+        """Convert RGB888 raw data to JPEG - trivial conversion"""
         try:
             import numpy as np
             from PIL import Image
             
-            # Read raw RGB565 data
-            with open(rgb565_path, 'rb') as f:
+            # Read raw RGB888 data
+            with open(rgb888_path, 'rb') as f:
                 raw_data = f.read()
             
-            expected_size = width * height * 2  # 2 bytes per pixel
+            expected_size = width * height * 3  # 3 bytes per pixel (RGB)
             if len(raw_data) != expected_size:
-                print(f"[WARNING] RGB565 size mismatch: expected {expected_size}, got {len(raw_data)}")
+                print(f"[WARNING] RGB888 size mismatch: expected {expected_size}, got {len(raw_data)}")
                 return False
             
-            # Convert bytes to numpy array as little-endian uint16
-            rgb565_array = np.frombuffer(raw_data, dtype=np.uint16).reshape((height, width))
-            
-            # Try both byte orders to see which one produces valid images
-            # Extract RGB channels from RGB565 format: RRRRRGGGGGGBBBBB
-            r5 = ((rgb565_array & 0xF800) >> 11).astype(np.uint16)  # 5 bits red
-            g6 = ((rgb565_array & 0x07E0) >> 5).astype(np.uint16)   # 6 bits green
-            b5 = (rgb565_array & 0x001F).astype(np.uint16)          # 5 bits blue
-            
-            # Optimal conversion algorithm (from Stack Overflow)
-            # This provides accurate mapping with proper rounding
-            r8 = ((r5 * 527 + 23) >> 6).astype(np.uint8)  # 5-bit to 8-bit
-            g8 = ((g6 * 259 + 33) >> 6).astype(np.uint8)  # 6-bit to 8-bit
-            b8 = ((b5 * 527 + 23) >> 6).astype(np.uint8)  # 5-bit to 8-bit
-            
-            # Alternative: bit replication method for comparison
-            # Uncomment these if the above doesn't work:
-            # r8 = ((r5 << 3) | (r5 >> 2)).astype(np.uint8)
-            # g8 = ((g6 << 2) | (g6 >> 4)).astype(np.uint8)
-            # b8 = ((b5 << 3) | (b5 >> 2)).astype(np.uint8)
-            
-            # Stack into RGB image
-            rgb_image = np.dstack([r8, g8, b8])
+            # Directly reshape to RGB image - no conversion needed!
+            rgb_image = np.frombuffer(raw_data, dtype=np.uint8).reshape((height, width, 3))
             
             # Convert to PIL Image and save as JPEG
             img = Image.fromarray(rgb_image, mode='RGB')
@@ -81,7 +60,7 @@ class CameraSystem:
             print(f"[VISION] Conversion successful: {width}x{height} RGB image")
             return True
         except Exception as e:
-            print(f"[ERROR] RGB565 conversion failed: {e}")
+            print(f"[ERROR] RGB888 conversion failed: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -115,7 +94,7 @@ class CameraSystem:
                             if response.status_code == 200:
                                 # Read in chunks to handle incomplete reads better
                                 current_dir = os.path.dirname(os.path.abspath(__file__))
-                                raw_path = os.path.join(current_dir, "data", "capture_raw.rgb565")
+                                raw_path = os.path.join(current_dir, "data", "capture_raw.rgb888")
                                 
                                 # Stream raw data to file in chunks
                                 with open(raw_path, 'wb') as f:
@@ -123,15 +102,15 @@ class CameraSystem:
                                         if chunk:
                                             f.write(chunk)
                                 
-                                print(f"[VISION] Raw RGB565 data received ({os.path.getsize(raw_path)} bytes)")
+                                print(f"[VISION] Raw RGB888 data received ({os.path.getsize(raw_path)} bytes)")
                                 
-                                # Convert RGB565 to JPEG (QVGA: 320x240)
+                                # Convert RGB888 to JPEG (QVGA: 320x240)
                                 save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
-                                if self._convert_rgb565_to_jpeg(raw_path, save_path, 320, 240):
+                                if self._convert_rgb888_to_jpeg(raw_path, save_path, 320, 240):
                                     print(f"[VISION] Image converted and saved to {save_path}")
                                     return save_path
                                 else:
-                                    print(f"[ERROR] Failed to convert RGB565 to JPEG")
+                                    print(f"[ERROR] Failed to convert RGB888 to JPEG")
                                     return None
                             else:
                                 print(f"[WARNING] Attempt {attempt+1}: Status {response.status_code}")
