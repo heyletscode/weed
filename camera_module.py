@@ -35,29 +35,49 @@ class CameraSystem:
             return path.replace('\\', '/')
         return path
     
-    def _convert_rgb888_to_jpeg(self, rgb888_path, output_path, width, height):
-        """Convert RGB888 raw data to JPEG - trivial conversion"""
+    def _convert_rgb565_to_png(self, rgb565_path, output_path, width, height):
+        """Convert RGB565 raw data to PNG image"""
         try:
-            import numpy as np
+            import struct
             from PIL import Image
             
-            # Read raw RGB888 data
-            with open(rgb888_path, 'rb') as f:
-                raw_data = f.read()
+            # Read raw RGB565 data
+            with open(rgb565_path, 'rb') as f:
+                data = f.read()
             
-            expected_size = width * height * 3  # 3 bytes per pixel (RGB)
-            if len(raw_data) != expected_size:
-                print(f"[WARNING] RGB888 size mismatch: expected {expected_size}, got {len(raw_data)}")
+            expected_size = width * height * 2  # 2 bytes per pixel
+            if len(data) != expected_size:
+                print(f"[WARNING] RGB565 size mismatch: expected {expected_size}, got {len(data)}")
                 return False
             
-            # Directly reshape to RGB image - no conversion needed!
-            rgb_image = np.frombuffer(raw_data, dtype=np.uint8).reshape((height, width, 3))
+            # Create a new RGB image
+            img = Image.new("RGB", (width, height))
+            pixels = img.load()
             
-            # Convert to PIL Image and save as JPEG
-            img = Image.fromarray(rgb_image, mode='RGB')
-            img.save(output_path, 'JPEG', quality=85)
+            # Conversion loop
+            i = 0
+            for y in range(height):
+                for x in range(width):
+                    # Read 2 bytes (16 bits) as little-endian
+                    pixel_val = struct.unpack('<H', data[i:i+2])[0]
+                    
+                    # Extract 5-6-5 bits
+                    r = (pixel_val >> 11) & 0x1F
+                    g = (pixel_val >> 5) & 0x3F
+                    b = pixel_val & 0x1F
+                    
+                    # Scale up to 8-bit (0-255)
+                    pixels[x, y] = (
+                        (r * 255) // 31,
+                        (g * 255) // 63,
+                        (b * 255) // 31
+                    )
+                    i += 2
             
-            print(f"[VISION] Conversion successful: {width}x{height} RGB image")
+            # Save as PNG (lossless)
+            img.save(output_path, 'PNG')
+            
+            print(f"[VISION] Conversion successful: {width}x{height} PNG image")
             return True
         except Exception as e:
             print(f"[ERROR] RGB888 conversion failed: {e}")
@@ -104,13 +124,13 @@ class CameraSystem:
                                 
                                 print(f"[VISION] Raw RGB888 data received ({os.path.getsize(raw_path)} bytes)")
                                 
-                                # Convert RGB888 to JPEG (QVGA: 320x240)
-                                save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
-                                if self._convert_rgb888_to_jpeg(raw_path, save_path, 320, 240):
+                                # Convert RGB565 to PNG (QVGA: 320x240)
+                                save_path = os.path.join(current_dir, "data", "capture_latest.png")
+                                if self._convert_rgb565_to_png(raw_path, save_path, 320, 240):
                                     print(f"[VISION] Image converted and saved to {save_path}")
                                     return save_path
                                 else:
-                                    print(f"[ERROR] Failed to convert RGB888 to JPEG")
+                                    print(f"[ERROR] Failed to convert RGB565 to PNG")
                                     return None
                             else:
                                 print(f"[WARNING] Attempt {attempt+1}: Status {response.status_code}")
