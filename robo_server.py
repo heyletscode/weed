@@ -23,6 +23,7 @@ class RobotControlGUI:
         self.client_conn = None
         self.server_socket = None
         self.local_ip = socket.gethostbyname(socket.gethostname())
+        self.camera_ip = None # To store auto-discovered camera IP
         
         # Timing parameters
         self.forward_time = DEFAULT_FORWARD_TIME
@@ -58,6 +59,10 @@ class RobotControlGUI:
                                          state="readonly", width=15)
         self.source_combo.current(0) # Default to Dataset
         self.source_combo.pack()
+        
+        self.camera_status_label = tk.Label(src_frame, text="Camera Not Connected", 
+                                          font=("Arial", 8), fg="#95a5a6")
+        self.camera_status_label.pack(anchor=tk.W)
         
         # Image Display Area
         self.image_label = tk.Label(vision_frame, text="No Image", bg="#bdc3c7", width=40, height=10)
@@ -146,15 +151,61 @@ class RobotControlGUI:
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.bind(("0.0.0.0", PORT))
-            self.server_socket.listen(1)
+            self.server_socket.listen(5) # Allow backlog
             
             print(f"[SERVER] Started on {self.local_ip}:{PORT}")
-            print(f"[SERVER] Waiting for ESP32 connection...")
             
-            conn, addr = self.server_socket.accept()
+            while True:
+                print(f"[SERVER] Waiting for connection...")
+                conn, addr = self.server_socket.accept()
+                print(f"[SERVER] Connection from {addr}")
+                
+                # Handle each client in a separate thread
+                client_thread = threading.Thread(target=self.handle_client_connection, args=(conn, addr), daemon=True)
+                client_thread.start()
+                
+        except Exception as e:
+            print(f"[ERROR] Server error: {e}")
+            self.root.after(0, self.update_connection_status, False)
+
+    def handle_client_connection(self, conn, addr):
+        """Determine if client is Camera or Robot and handle accordingly"""
+        try:
+            # Set a short timeout to peek for Camera announcement
+            conn.settimeout(2.0) 
+            try:
+                # Attempt to read prompt data (Camera sends immediately)
+                data = b""
+                # Read until newline or max bytes
+                while b"\n" not in data and len(data) < 1024:
+                    chunk = conn.recv(1024)
+                    if not chunk: break
+                    data += chunk
+                
+                msg = data.decode().strip()
+                
+                if msg.startswith("CAM_IP:"):
+                    # === IT IS THE CAMERA ===
+                    cam_ip = msg.split(":")[1]
+                    self.camera_ip = cam_ip
+                    print(f"[CAMERA] Auto-discovered at {self.camera_ip}")
+                    self.root.after(0, lambda: self.camera_status_label.config(text="Camera Connected", fg="#27ae60"))
+                    conn.close() # We are done with camera announcement
+                    return
+            except socket.timeout:
+                # No data received immediately -> It's the Robot (waiting for config)
+                pass
+            except Exception as e:
+                print(f"[Handshake] Error: {e}")
+                conn.close()
+                return
+
+            # === IT IS THE ROBOT ===
+            # Reset timeout to blocking (or long timeout)
+            conn.settimeout(None)
             self.client_conn = conn
             
-            print(f"[CONNECTED] Robot connected from {addr}")
+            print(f"[ROBOT] Robot connected from {addr}")
             
             # Send initial config
             self.send_config()
@@ -162,30 +213,46 @@ class RobotControlGUI:
             # Update GUI
             self.root.after(0, self.update_connection_status, True)
             
-            # Start listener thread for spray queries
-            listener_thread = threading.Thread(target=self.listen_for_queries, daemon=True)
-            listener_thread.start()
+            # Start Config + Query Listener Loop (This blocks this thread)
+            self.listen_for_robot_messages()
             
         except Exception as e:
-            print(f"[ERROR] Server error: {e}")
-            self.root.after(0, self.update_connection_status, False)
-    
-    def listen_for_queries(self):
-        """Background thread to listen for spray queries from ESP32"""
-        print("[LISTENER] Started listening for spray queries")
+            print(f"[ERROR] Client handler error: {e}")
+            if self.client_conn == conn:
+                self.client_conn = None
+                self.root.after(0, self.update_connection_status, False)
+
+    def listen_for_robot_messages(self):
+        """Persistent loop for Robot communication"""
+        print("[LISTENER] Started listening for robot messages")
         while self.client_conn:
             try:
-                if self.client_conn:
-                    data = self.client_conn.recv(1)
-                    if data:
-                        cmd = data.decode()
-                        if cmd == 'Q':
-                            # Spray query received - Start Vision Pipeline
-                            print(f"[QUERY] Spray query received. Starting vision pipeline...")
-                            self.run_vision_pipeline()
-            except Exception as e:
-                print(f"[LISTENER] Error: {e}")
+                data = self.client_conn.recv(1)
+                if not data:
+                    print("[ROBOT] M Disconnected")
+                    break
+                
+                cmd = data.decode()
+                
+                # Handle 'Q' Query
+                if cmd == 'Q':
+                    print(f"[QUERY] Spray query received.")
+                    self.run_vision_pipeline()
+                
+                # Handle other single-char incoming if needed
+                
+            except ConnectionResetError:
+                print("[ROBOT] Connection Reset")
                 break
+            except Exception as e:
+                print(f"[ROBOT] Listener Error: {e}")
+                break
+        
+        # Cleanup if loop exits
+        if self.client_conn:
+            self.client_conn.close()
+        self.client_conn = None
+        self.root.after(0, self.update_connection_status, False)
     
     def run_vision_pipeline(self):
         """Executes the simulated vision pipeline: Fetch -> Process -> Respond"""
@@ -201,7 +268,8 @@ class RobotControlGUI:
         selected_source = source_map.get(self.source_combo.get(), "dataset")
         
         # Use camera module to fetch image
-        image_path = self.camera.fetch_image(source=selected_source)
+        # Pass the discovered camera IP if available
+        image_path = self.camera.fetch_image(source=selected_source, camera_ip=self.camera_ip)
         
         # Update GUI with fetched image
         if image_path:

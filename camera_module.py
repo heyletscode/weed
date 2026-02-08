@@ -21,7 +21,7 @@ class CameraSystem:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
             
             vertexai.init(project=PROJECT_ID, location=LOCATION)
-            self.model = GenerativeModel("gemini-2.0-flash-exp")
+            self.model = GenerativeModel("gemini-2.5-flash")
             self.use_vertex = True
             print(f"[VISION] Vertex AI initialized with project {PROJECT_ID}")
         except Exception as e:
@@ -35,18 +35,55 @@ class CameraSystem:
             return path.replace('\\', '/')
         return path
 
-    def fetch_image(self, source="dataset"):
+    def fetch_image(self, source="dataset", camera_ip=None):
         """
         Fetch image based on source.
         source: "dataset" or "camera"
+        camera_ip: IP address of the ESP32-CAM (required for "camera" source)
         """
         print(f"[VISION] Fetching image from {source}...")
-        # Delay removed here, now handled by GUI countdown
         
         if source == "camera":
-            print("[VISION] (Placeholder) Capturing from Real Camera... (Using random dataset image for now)")
-            # TODO: Implement real camera capture here
-            # For now, fall through to dataset logic
+            if camera_ip:
+                try:
+                    import requests
+                    url = f"http://{camera_ip}/capture"
+                    print(f"[VISION] Requesting from {url}...")
+                    
+                    # Retry logic
+                    for attempt in range(3):
+                        try:
+                            response = requests.get(url, timeout=20) # Increased timeout
+                            if response.status_code == 200:
+                                # Success!
+                                break
+                            else:
+                                print(f"[WARNING] Attempt {attempt+1}: Status {response.status_code}")
+                        except requests.exceptions.RequestException as e:
+                            print(f"[WARNING] Attempt {attempt+1}: {e}")
+                            if attempt == 2: raise # Re-raise on last attempt
+                            time.sleep(1) # Wait a bit before retry
+
+                    if response.status_code == 200:
+                        # Save to temp file
+                        current_dir = os.path.dirname(os.path.abspath(__file__))
+                        save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
+                        
+                        with open(save_path, 'wb') as f:
+                            f.write(response.content)
+                        
+                        print(f"[VISION] Image captured and saved to {save_path}")
+                        return save_path
+                    else:
+                        print(f"[ERROR] Camera returned status {response.status_code}")
+                except Exception as e:
+                    print(f"[ERROR] Camera fetch failed after retries: {e}")
+            else:
+                print("[ERROR] Camera IP not known yet! (Wait for camera to connect)")
+            
+            print("[VISION] Falling back to dataset...")
+        
+        # Get directory of current file
         
         # Get directory of current file
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -92,6 +129,7 @@ class CameraSystem:
                 1. Count the number of distinct plants in the image.
                 2. IF there are multiple distinct plants, return a list of all their types: e.g. ['weed', 'healthy_tomato']
                 3. IF there is only one plant, return ONLY the single most confident classification: e.g. ['weed']
+                4. IF NO plant is clearly visible in the image, or you are unsure, return []. Do not guess.
                 
                 Return ONLY a python list of strings containing exactly the detected classes.
                 If nothing is detected, return [].
