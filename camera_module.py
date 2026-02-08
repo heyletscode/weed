@@ -34,6 +34,42 @@ class CameraSystem:
         if path:
             return path.replace('\\', '/')
         return path
+    
+    def _convert_rgb565_to_jpeg(self, rgb565_path, output_path, width, height):
+        """Convert RGB565 raw data to JPEG image"""
+        try:
+            import numpy as np
+            from PIL import Image
+            
+            # Read raw RGB565 data
+            with open(rgb565_path, 'rb') as f:
+                raw_data = f.read()
+            
+            expected_size = width * height * 2  # 2 bytes per pixel
+            if len(raw_data) != expected_size:
+                print(f"[WARNING] RGB565 size mismatch: expected {expected_size}, got {len(raw_data)}")
+                return False
+            
+            # Convert bytes to numpy array
+            rgb565_array = np.frombuffer(raw_data, dtype=np.uint16).reshape((height, width))
+            
+            # Extract RGB channels from RGB565
+            # RGB565 format: RRRRRGGGGGGBBBBB (5-6-5 bits)
+            r = ((rgb565_array & 0xF800) >> 11) << 3  # 5 bits red -> 8 bits
+            g = ((rgb565_array & 0x07E0) >> 5) << 2   # 6 bits green -> 8 bits
+            b = (rgb565_array & 0x001F) << 3          # 5 bits blue -> 8 bits
+            
+            # Stack into RGB image
+            rgb_image = np.stack([r, g, b], axis=-1).astype(np.uint8)
+            
+            # Convert to PIL Image and save as JPEG
+            img = Image.fromarray(rgb_image, mode='RGB')
+            img.save(output_path, 'JPEG', quality=85)
+            
+            return True
+        except Exception as e:
+            print(f"[ERROR] RGB565 conversion failed: {e}")
+            return False
 
     def fetch_image(self, source="dataset", camera_ip=None):
         """
@@ -64,16 +100,24 @@ class CameraSystem:
                             if response.status_code == 200:
                                 # Read in chunks to handle incomplete reads better
                                 current_dir = os.path.dirname(os.path.abspath(__file__))
-                                save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
+                                raw_path = os.path.join(current_dir, "data", "capture_raw.rgb565")
                                 
-                                # Stream to file in chunks
-                                with open(save_path, 'wb') as f:
+                                # Stream raw data to file in chunks
+                                with open(raw_path, 'wb') as f:
                                     for chunk in response.iter_content(chunk_size=4096):
                                         if chunk:
                                             f.write(chunk)
                                 
-                                print(f"[VISION] Image captured and saved to {save_path}")
-                                return save_path
+                                print(f"[VISION] Raw RGB565 data received ({os.path.getsize(raw_path)} bytes)")
+                                
+                                # Convert RGB565 to JPEG (QVGA: 320x240)
+                                save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
+                                if self._convert_rgb565_to_jpeg(raw_path, save_path, 320, 240):
+                                    print(f"[VISION] Image converted and saved to {save_path}")
+                                    return save_path
+                                else:
+                                    print(f"[ERROR] Failed to convert RGB565 to JPEG")
+                                    return None
                             else:
                                 print(f"[WARNING] Attempt {attempt+1}: Status {response.status_code}")
                         except requests.exceptions.RequestException as e:

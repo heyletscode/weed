@@ -54,15 +54,13 @@ void startCamera() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
+  config.pixel_format = PIXFORMAT_RGB565;
   
-  // Frame parameters - Optimized for reliability
-  config.frame_size = FRAMESIZE_VGA; // 640x480 (smaller for reliability)
-  config.jpeg_quality = 35; // 0-63 (higher number = lower quality = smaller file = more stable)
+  // Frame parameters - Reduced resolution for RGB565
+  config.frame_size = FRAMESIZE_QVGA; // 320x240 = ~150KB (vs 640x480 = ~600KB)
   config.fb_count = 2; // Double buffering for better reliability
 
   if(psramFound()){
-    config.jpeg_quality = 30; // Still lower quality for reliability
     config.grab_mode = CAMERA_GRAB_LATEST;
   }
   // Camera init
@@ -98,12 +96,24 @@ void serveImage(WiFiClient& client) {
   }
 
   client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: image/jpeg");
-  client.println("Content-Disposition: inline; filename=capture.jpg");
+  client.println("Content-Type: application/octet-stream");
+  client.println("Content-Disposition: inline; filename=capture.rgb565");
   client.print("Content-Length: ");
   client.println(fb->len);
   client.println();
-  client.write(fb->buf, fb->len);
+  
+  // Send in chunks for large RGB565 data
+  size_t remaining = fb->len;
+  size_t sent = 0;
+  const size_t chunk_size = 4096;
+  
+  while(remaining > 0) {
+    size_t to_send = (remaining > chunk_size) ? chunk_size : remaining;
+    client.write(fb->buf + sent, to_send);
+    sent += to_send;
+    remaining -= to_send;
+    delay(1); // Small delay to prevent buffer overflow
+  }
   
   esp_camera_fb_return(fb);
 }
