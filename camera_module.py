@@ -50,17 +50,23 @@ class CameraSystem:
                 print(f"[WARNING] RGB565 size mismatch: expected {expected_size}, got {len(raw_data)}")
                 return False
             
-            # Convert bytes to numpy array
-            rgb565_array = np.frombuffer(raw_data, dtype=np.uint16).reshape((height, width))
+            # Convert bytes to numpy array as little-endian uint16
+            rgb565_array = np.frombuffer(raw_data, dtype='<u2').reshape((height, width))
             
             # Extract RGB channels from RGB565
-            # RGB565 format: RRRRRGGGGGGBBBBB (5-6-5 bits)
-            r = ((rgb565_array & 0xF800) >> 11) << 3  # 5 bits red -> 8 bits
-            g = ((rgb565_array & 0x07E0) >> 5) << 2   # 6 bits green -> 8 bits
-            b = (rgb565_array & 0x001F) << 3          # 5 bits blue -> 8 bits
+            # RGB565 format (little-endian): GGGBBBBB RRRRRGGG
+            # After reading as little-endian uint16: RRRRRGGGGGGBBBBB
+            r = ((rgb565_array & 0xF800) >> 11)  # 5 bits red
+            g = ((rgb565_array & 0x07E0) >> 5)   # 6 bits green
+            b = (rgb565_array & 0x001F)          # 5 bits blue
+            
+            # Scale to 8-bit properly
+            r = (r * 255 // 31).astype(np.uint8)  # 5-bit to 8-bit
+            g = (g * 255 // 63).astype(np.uint8)  # 6-bit to 8-bit
+            b = (b * 255 // 31).astype(np.uint8)  # 5-bit to 8-bit
             
             # Stack into RGB image
-            rgb_image = np.stack([r, g, b], axis=-1).astype(np.uint8)
+            rgb_image = np.stack([r, g, b], axis=-1)
             
             # Convert to PIL Image and save as JPEG
             img = Image.fromarray(rgb_image, mode='RGB')
