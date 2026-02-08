@@ -50,32 +50,42 @@ class CameraSystem:
                     url = f"http://{camera_ip}/capture"
                     print(f"[VISION] Requesting from {url}...")
                     
-                    # Retry logic
-                    for attempt in range(3):
+                    # Retry logic with exponential backoff
+                    for attempt in range(5):
                         try:
-                            response = requests.get(url, timeout=20) # Increased timeout
+                            # Use streaming to handle large responses better
+                            # Add keep-alive and disable compression
+                            headers = {
+                                'Connection': 'keep-alive',
+                                'Accept-Encoding': 'identity'
+                            }
+                            response = requests.get(url, timeout=30, stream=True, headers=headers)
+                            
                             if response.status_code == 200:
-                                # Success!
-                                break
+                                # Read in chunks to handle incomplete reads better
+                                current_dir = os.path.dirname(os.path.abspath(__file__))
+                                save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
+                                
+                                # Stream to file in chunks
+                                with open(save_path, 'wb') as f:
+                                    for chunk in response.iter_content(chunk_size=4096):
+                                        if chunk:
+                                            f.write(chunk)
+                                
+                                print(f"[VISION] Image captured and saved to {save_path}")
+                                return save_path
                             else:
                                 print(f"[WARNING] Attempt {attempt+1}: Status {response.status_code}")
                         except requests.exceptions.RequestException as e:
                             print(f"[WARNING] Attempt {attempt+1}: {e}")
-                            if attempt == 2: raise # Re-raise on last attempt
-                            time.sleep(1) # Wait a bit before retry
-
-                    if response.status_code == 200:
-                        # Save to temp file
-                        current_dir = os.path.dirname(os.path.abspath(__file__))
-                        save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
-                        
-                        with open(save_path, 'wb') as f:
-                            f.write(response.content)
-                        
-                        print(f"[VISION] Image captured and saved to {save_path}")
-                        return save_path
-                    else:
-                        print(f"[ERROR] Camera returned status {response.status_code}")
+                            if attempt == 4:
+                                raise
+                            # Exponential backoff: 1s, 2s, 4s, 8s
+                            wait_time = 2 ** attempt
+                            print(f"[VISION] Waiting {wait_time}s before retry...")
+                            time.sleep(wait_time)
+                    
+                    print(f"[ERROR] Camera returned status {response.status_code}")
                 except Exception as e:
                     print(f"[ERROR] Camera fetch failed after retries: {e}")
             else:

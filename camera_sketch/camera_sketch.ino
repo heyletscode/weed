@@ -30,6 +30,8 @@ const char* server_ip = "10.16.152.30";
 const uint16_t server_port = 5000;
 
 WiFiServer webServer(80);
+unsigned long lastAnnounceTime = 0;
+const unsigned long announceInterval = 15000;
 
 void startCamera() {
   camera_config_t config;
@@ -54,13 +56,13 @@ void startCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
   
-  // Frame parameters
-  config.frame_size = FRAMESIZE_VGA; // 640x480
-  config.jpeg_quality = 30; // 0-63 (lower is higher quality)
-  config.fb_count = 1;
+  // Frame parameters - Optimized for reliability
+  config.frame_size = FRAMESIZE_VGA; // 640x480 (smaller for reliability)
+  config.jpeg_quality = 35; // 0-63 (higher number = lower quality = smaller file = more stable)
+  config.fb_count = 2; // Double buffering for better reliability
 
   if(psramFound()){
-    config.jpeg_quality = 25;
+    config.jpeg_quality = 30; // Still lower quality for reliability
     config.grab_mode = CAMERA_GRAB_LATEST;
   }
   // Camera init
@@ -117,6 +119,13 @@ void setup() {
 }
 
 void loop() {
+  // Periodic presence announcement
+  unsigned long currentTime = millis();
+  if (currentTime - lastAnnounceTime >= announceInterval) {
+    announcePresence();
+    lastAnnounceTime = currentTime;
+  }
+  
   // Check for HTTP requests
   WiFiClient client = webServer.available();
   if (client) {
