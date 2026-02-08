@@ -35,50 +35,49 @@ class CameraSystem:
             return path.replace('\\', '/')
         return path
     
-    def _convert_rgb565_to_jpeg(self, rgb565_path, output_path, width, height):
-        """Convert RGB565 raw data to JPEG image using optimal algorithm"""
+    def _convert_rgb565_to_png(self, rgb565_path, output_path, width, height):
+        """Convert RGB565 raw data to PNG image"""
         try:
-            import numpy as np
+            import struct
             from PIL import Image
             
             # Read raw RGB565 data
             with open(rgb565_path, 'rb') as f:
-                raw_data = f.read()
+                data = f.read()
             
             expected_size = width * height * 2  # 2 bytes per pixel
-            if len(raw_data) != expected_size:
-                print(f"[WARNING] RGB565 size mismatch: expected {expected_size}, got {len(raw_data)}")
+            if len(data) != expected_size:
+                print(f"[WARNING] RGB565 size mismatch: expected {expected_size}, got {len(data)}")
                 return False
             
-            # Convert bytes to numpy array as little-endian uint16
-            rgb565_array = np.frombuffer(raw_data, dtype=np.uint16).reshape((height, width))
+            # Create a new RGB image
+            img = Image.new("RGB", (width, height))
+            pixels = img.load()
             
-            # Try both byte orders to see which one produces valid images
-            # Extract RGB channels from RGB565 format: RRRRRGGGGGGBBBBB
-            r5 = ((rgb565_array & 0xF800) >> 11).astype(np.uint16)  # 5 bits red
-            g6 = ((rgb565_array & 0x07E0) >> 5).astype(np.uint16)   # 6 bits green
-            b5 = (rgb565_array & 0x001F).astype(np.uint16)          # 5 bits blue
+            # Conversion loop
+            i = 0
+            for y in range(height):
+                for x in range(width):
+                    # Read 2 bytes (16 bits) as little-endian
+                    pixel_val = struct.unpack('<H', data[i:i+2])[0]
+                    
+                    # Extract 5-6-5 bits
+                    r = (pixel_val >> 11) & 0x1F
+                    g = (pixel_val >> 5) & 0x3F
+                    b = pixel_val & 0x1F
+                    
+                    # Scale up to 8-bit (0-255)
+                    pixels[x, y] = (
+                        (r * 255) // 31,
+                        (g * 255) // 63,
+                        (b * 255) // 31
+                    )
+                    i += 2
             
-            # Optimal conversion algorithm (from Stack Overflow)
-            # This provides accurate mapping with proper rounding
-            r8 = ((r5 * 527 + 23) >> 6).astype(np.uint8)  # 5-bit to 8-bit
-            g8 = ((g6 * 259 + 33) >> 6).astype(np.uint8)  # 6-bit to 8-bit
-            b8 = ((b5 * 527 + 23) >> 6).astype(np.uint8)  # 5-bit to 8-bit
+            # Save as PNG (lossless)
+            img.save(output_path, 'PNG')
             
-            # Alternative: bit replication method for comparison
-            # Uncomment these if the above doesn't work:
-            # r8 = ((r5 << 3) | (r5 >> 2)).astype(np.uint8)
-            # g8 = ((g6 << 2) | (g6 >> 4)).astype(np.uint8)
-            # b8 = ((b5 << 3) | (b5 >> 2)).astype(np.uint8)
-            
-            # Stack into RGB image
-            rgb_image = np.dstack([r8, g8, b8])
-            
-            # Convert to PIL Image and save as JPEG
-            img = Image.fromarray(rgb_image, mode='RGB')
-            img.save(output_path, 'JPEG', quality=85)
-            
-            print(f"[VISION] Conversion successful: {width}x{height} RGB image")
+            print(f"[VISION] Conversion successful: {width}x{height} PNG image")
             return True
         except Exception as e:
             print(f"[ERROR] RGB565 conversion failed: {e}")
@@ -125,13 +124,13 @@ class CameraSystem:
                                 
                                 print(f"[VISION] Raw RGB565 data received ({os.path.getsize(raw_path)} bytes)")
                                 
-                                # Convert RGB565 to JPEG (QVGA: 320x240)
-                                save_path = os.path.join(current_dir, "data", "capture_latest.jpg")
-                                if self._convert_rgb565_to_jpeg(raw_path, save_path, 320, 240):
+                                # Convert RGB565 to PNG (QVGA: 320x240)
+                                save_path = os.path.join(current_dir, "data", "capture_latest.png")
+                                if self._convert_rgb565_to_png(raw_path, save_path, 320, 240):
                                     print(f"[VISION] Image converted and saved to {save_path}")
                                     return save_path
                                 else:
-                                    print(f"[ERROR] Failed to convert RGB565 to JPEG")
+                                    print(f"[ERROR] Failed to convert RGB565 to PNG")
                                     return None
                             else:
                                 print(f"[WARNING] Attempt {attempt+1}: Status {response.status_code}")
