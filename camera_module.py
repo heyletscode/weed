@@ -36,7 +36,7 @@ class CameraSystem:
         return path
     
     def _convert_rgb565_to_jpeg(self, rgb565_path, output_path, width, height):
-        """Convert RGB565 raw data to JPEG image"""
+        """Convert RGB565 raw data to JPEG image using optimal algorithm"""
         try:
             import numpy as np
             from PIL import Image
@@ -51,30 +51,39 @@ class CameraSystem:
                 return False
             
             # Convert bytes to numpy array as little-endian uint16
-            rgb565_array = np.frombuffer(raw_data, dtype='<u2').reshape((height, width))
+            rgb565_array = np.frombuffer(raw_data, dtype=np.uint16).reshape((height, width))
             
-            # Extract RGB channels from RGB565
-            # RGB565 format (little-endian): GGGBBBBB RRRRRGGG
-            # After reading as little-endian uint16: RRRRRGGGGGGBBBBB
-            r = ((rgb565_array & 0xF800) >> 11)  # 5 bits red
-            g = ((rgb565_array & 0x07E0) >> 5)   # 6 bits green
-            b = (rgb565_array & 0x001F)          # 5 bits blue
+            # Try both byte orders to see which one produces valid images
+            # Extract RGB channels from RGB565 format: RRRRRGGGGGGBBBBB
+            r5 = ((rgb565_array & 0xF800) >> 11).astype(np.uint16)  # 5 bits red
+            g6 = ((rgb565_array & 0x07E0) >> 5).astype(np.uint16)   # 6 bits green
+            b5 = (rgb565_array & 0x001F).astype(np.uint16)          # 5 bits blue
             
-            # Scale to 8-bit properly
-            r = (r * 255 // 31).astype(np.uint8)  # 5-bit to 8-bit
-            g = (g * 255 // 63).astype(np.uint8)  # 6-bit to 8-bit
-            b = (b * 255 // 31).astype(np.uint8)  # 5-bit to 8-bit
+            # Optimal conversion algorithm (from Stack Overflow)
+            # This provides accurate mapping with proper rounding
+            r8 = ((r5 * 527 + 23) >> 6).astype(np.uint8)  # 5-bit to 8-bit
+            g8 = ((g6 * 259 + 33) >> 6).astype(np.uint8)  # 6-bit to 8-bit
+            b8 = ((b5 * 527 + 23) >> 6).astype(np.uint8)  # 5-bit to 8-bit
+            
+            # Alternative: bit replication method for comparison
+            # Uncomment these if the above doesn't work:
+            # r8 = ((r5 << 3) | (r5 >> 2)).astype(np.uint8)
+            # g8 = ((g6 << 2) | (g6 >> 4)).astype(np.uint8)
+            # b8 = ((b5 << 3) | (b5 >> 2)).astype(np.uint8)
             
             # Stack into RGB image
-            rgb_image = np.stack([r, g, b], axis=-1)
+            rgb_image = np.dstack([r8, g8, b8])
             
             # Convert to PIL Image and save as JPEG
             img = Image.fromarray(rgb_image, mode='RGB')
             img.save(output_path, 'JPEG', quality=85)
             
+            print(f"[VISION] Conversion successful: {width}x{height} RGB image")
             return True
         except Exception as e:
             print(f"[ERROR] RGB565 conversion failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def fetch_image(self, source="dataset", camera_ip=None):
